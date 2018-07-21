@@ -7,7 +7,7 @@
  * Author URI:      https://www.codementor.io/ankitladhania
  * Text Domain:     gravity-forms-custom-xml-export
  * Domain Path:     /languages
- * Version:         1.2.0
+ * Version:         1.0.0
  *
  * @package         GravityFormCustomXMLExport
  */
