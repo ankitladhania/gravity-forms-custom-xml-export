@@ -12,15 +12,28 @@
  * @package         GravityFormCustomXMLExport
  */
 
-add_filter( 'gform_export_menu', 'custom_xml_export_menu_item' );
+if ( ! defined( 'WPINC' ) ) {
+  die;
+}
 
-// display content for custom menu item when selected
-add_action( 'gform_export_page_custom_xml_export', 'custom_xml_export_page' );
-add_action( 'wp_ajax_custom_xml_export_fetch_form_fields', 'custom_xml_export_fetch_form_fields');
-add_action('admin_post_custom_xml_export_export_xml', 'custom_xml_export_export_xml');
+if (is_admin()) {
+  add_filter('gform_export_menu', 'custom_xml_export_menu_item');
+
+  // display content for custom menu item when selected
+  add_action('gform_export_page_custom_xml_export', 'custom_xml_export_page');
+  add_action('wp_ajax_custom_xml_export_fetch_form_fields', 'custom_xml_export_fetch_form_fields');
+  add_action('admin_post_custom_xml_export_export_xml', 'custom_xml_export_export_xml');
+}
 
 const WP_OPTION_NAME = 'custom_xml_export_plugin_custom_fields';
+const WP_ON_THE_GO_OPTION_NAME = 'custom_xml_export_plugin_on_the_go_fields';
 
+/**
+ * Main function that adds the Export menu item
+ *
+ * @param $menu_items
+ * @return array
+ */
 function custom_xml_export_menu_item( $menu_items ) {
 
   $menu_items[] = array(
@@ -31,6 +44,9 @@ function custom_xml_export_menu_item( $menu_items ) {
   return $menu_items;
 }
 
+/**
+ * Adds the html template to render the form selection dropdown
+ */
 function custom_xml_export_page() {
 
   add_action('admin_footer', 'custom_xml_export_js');
@@ -42,6 +58,7 @@ function custom_xml_export_page() {
     <div class="hr-divider"></div>
     <form id="custom_xml_export_form" method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>" >
       <input type="hidden" name="action" value="custom_xml_export_export_xml" />
+      <!-- Start of Form selection drop down -->
       <table class="form-table">
         <tr valign="top">
 
@@ -65,6 +82,8 @@ function custom_xml_export_page() {
           </td>
         </tr>
       </table>
+      <!-- End of Form selection drop down -->
+      <!-- Start of entry field selector -->
       <div id="select_custom_fields"  style="display: none;">
         <div class="wrap row">
           <h4>Select Fields and their name to export in XML</h4>
@@ -76,6 +95,8 @@ function custom_xml_export_page() {
         <button class="add-new-h2" style="margin-left: 20px;">Add Field</button>
 
       </div>
+      <!-- End of entry field selector -->
+      <!-- Start of Custom field like BatchNumber -->
       <div id="add_on_the_go_fields"  style="display: none; margin-top: 20px;">
         <div class="wrap row">
           <h4>Select Fields and their name to export in XML</h4>
@@ -86,6 +107,8 @@ function custom_xml_export_page() {
       <div id="add_on_the_go_fields_button" class="row wrap" style="display: none;">
         <button class="add-new-h2" style="margin-left: 20px;">Add Custom Field</button>
       </div>
+      <!-- End of Custom field -->
+
       <div id="export_custom_field" class="row wrap" style="display: none;">
         <input type="submit" id="submit_button" class="button button-large button-primary alignright" value="Export" />
       </div>
@@ -97,15 +120,20 @@ function custom_xml_export_page() {
 
 }
 
+/**
+ * Adds the script used to render the saved mapping for the fields
+ */
 function custom_xml_export_js() {
   //print out the sack ajax library
   wp_print_scripts( array( 'sack' ));
   ?>
   <script type="text/javascript" >
     var $fields = null;
-    var $fields_settings_json = null;
     var $field_number = 0;
 
+    /**
+     * Called when we select a form in the form selection drop down
+     */
     function SelectExportForm(form_id) {
 
       // since 2.8 ajaxurl is always defined in the admin header and points to admin-ajax.php
@@ -122,9 +150,18 @@ function custom_xml_export_js() {
       return true;
     }
 
-    function SetFields(fields, fields_settings_json, saved_custom_fields) {
+
+    /**
+     * This function is called when the server returns field mapping
+     * @param fields
+     * @param saved_custom_fields
+     * @param saved_on_the_go
+     * @constructor
+     */
+    function SetFields(fields, saved_custom_fields, saved_on_the_go) {
       $fields = fields;
-      $fields_settings_json = fields_settings_json;
+      jQuery('#select_custom_fields table').empty();
+      jQuery('#add_on_the_go_fields table').empty();
       jQuery('#select_custom_fields').show();
       jQuery('#add_custom_field').show();
       jQuery('#export_custom_field').show();
@@ -135,7 +172,13 @@ function custom_xml_export_js() {
           addNewField(saved_custom_fields[key]);
         }
       }
-      jQuery(document).on('click', '#add_custom_field > button', function (e) {
+
+      if (saved_on_the_go) {
+        for (var key in saved_on_the_go) {
+          addCustomField(saved_on_the_go[key]);
+        }
+      }
+      jQuery(document).off('click').on('click', '#add_custom_field > button', function (e) {
         e.preventDefault();
         addNewField();
       });
@@ -156,6 +199,12 @@ function custom_xml_export_js() {
       });
     }
 
+    /**
+     * Returns the template for entry fields drop-down
+     * @param i
+     * @param selected optional
+     * @returns {string}
+     */
     function getSelect(i, selected) {
       var str = '<select name="custom_fields['+i+'][0]" style="width: 300px;"><option>Select a Field</option>';
 
@@ -173,6 +222,10 @@ function custom_xml_export_js() {
       return str;
     }
 
+    /**
+     * Adds a new entry field to the form with dropdown and input
+     * @param selected_field optional
+     */
     function addNewField(selected_field) {
       var str = '<tr>';
 
@@ -193,11 +246,25 @@ function custom_xml_export_js() {
       $field_number++;
     }
 
-    function addCustomField() {
+
+    /**
+     * Adds a custom field to the form like BatchNumber
+     * @param selected_field
+     */
+    function addCustomField(selected_field) {
       var str = '<tr>';
 
-      str += '<td style="margin-right: 20px;"><input type="text" name="on_the_go_fields['+$field_number+'][0]" placeholder="Custom field name" />';
-      str += '<td><input type="text" name="on_the_go_fields['+$field_number+'][1]" placeholder="Field value" />';
+      if (selected_field && selected_field[0]) {
+        str += '<td style="margin-right: 20px;"><input type="text" name="on_the_go_fields['+$field_number+'][0]" placeholder="Custom field name" value="'+selected_field[0]+'" />';
+      } else {
+        str += '<td style="margin-right: 20px;"><input type="text" name="on_the_go_fields['+$field_number+'][0]" placeholder="Custom field name" />';
+      }
+
+      if (selected_field && selected_field[1]) {
+        str += '<td><input type="text" name="on_the_go_fields[' + $field_number + '][1]" placeholder="Field value" value="'+selected_field[1]+'" />';
+      } else {
+        str += '<td><input type="text" name="on_the_go_fields[' + $field_number + '][1]" placeholder="Field value" />';
+      }
       str += '<td><a href="#" class="remove_field_button">Remove</a></td>';
 
       jQuery('#add_on_the_go_fields > table').append(str);
@@ -207,6 +274,9 @@ function custom_xml_export_js() {
   <?php
 }
 
+/**
+ * API to fetch already saved mapping for entry fields and custom fields
+ */
 function custom_xml_export_fetch_form_fields() {
   if (is_admin()) {
     $form_id = intval($_POST['form_id']);
@@ -215,6 +285,7 @@ function custom_xml_export_fetch_form_fields() {
     $form = gf_apply_filters( array( 'gform_form_export_page', $form_id ), $form );
 
     $saved_custom_field = get_option(WP_OPTION_NAME.$form_id);
+    $saved_on_the_go_fields = get_option(WP_ON_THE_GO_OPTION_NAME.$form_id);
 
 
     $filter_settings      = GFCommon::get_field_filter_settings( $form );
@@ -239,14 +310,24 @@ function custom_xml_export_fetch_form_fields() {
 
     $field_json = GFCommon::json_encode( $fields );
 
-    die("SetFields($field_json, $filter_settings_json, $saved_custom_field)");
+    if (empty($saved_custom_field)) {
+      $saved_custom_field = 'null';
+    }
+    if (empty($saved_on_the_go_fields)) {
+      $saved_on_the_go_fields = 'null';
+    }
+
+    die("SetFields($field_json, $saved_custom_field, $saved_on_the_go_fields)");
   }
 }
 
+/**
+ * Helper function to convert PHP associative arrays to XML fields
+ */
 function array_to_xml( $data, &$xml_data ) {
   foreach( $data as $key => $value ) {
     if( is_numeric($key) ){
-      $key = 'donation';
+      $key = 'data';
     }
     if( is_array($value) ) {
       $subnode = $xml_data->addChild($key);
@@ -258,6 +339,10 @@ function array_to_xml( $data, &$xml_data ) {
 }
 
 
+/**
+ * Exports the custom fields as XML and
+ * saves them for future reference
+ */
 function custom_xml_export_export_xml() {
   if (is_admin()) {
 
@@ -269,7 +354,13 @@ function custom_xml_export_export_xml() {
     $form    = RGFormsModel::get_form_meta( $form_id );
     $form_fields = isset($_POST['custom_fields']) ? $_POST['custom_fields'] : [];
 
+    /**
+     * Saving the custom fields
+     * 1. the fields from entries
+     * 2. the custom fields that we add
+     */
     update_option(WP_OPTION_NAME.$form_id, json_encode($form_fields));
+    update_option(WP_ON_THE_GO_OPTION_NAME.$form_id, json_encode($on_the_go_fields));
 
     $search_criteria['status']        = 'active';
     $search_criteria['field_filters'] = GFCommon::get_field_filters_from_post( $form );
@@ -289,6 +380,7 @@ function custom_xml_export_export_xml() {
     $leads = GFAPI::get_entries( $form_id, $search_criteria, $sorting );
 
     $leads = gf_apply_filters( array( 'gform_leads_before_export', $form_id ), $leads, $form );
+    $eway_token_key = '';
 
     foreach ( $leads as $lead ) {
       GFCommon::log_debug( __METHOD__ . '(): Processing entry #' . $lead['id'] );
@@ -351,9 +443,6 @@ function custom_xml_export_export_xml() {
           }
         }
 
-        if ($form_field[0] === 'eway_token' && !empty($value)) {
-          $value = "TE$value";
-        }
 
         $one_row[$form_field[1]] = $value;
       }
@@ -361,7 +450,7 @@ function custom_xml_export_export_xml() {
     }
 
 
-    $xml_data = new SimpleXMLElement('<?xml version="1.0"?><donman></donman>');
+    $xml_data = new SimpleXMLElement('<?xml version="1.0"?><CustomXML></CustomXML>');
 
     header('Content-disposition: attachment; filename="custom-xml-export-'.date('m-d-Y', time()).'.xml"');
     header('Content-type: "text/xml"; charset="utf8"');
